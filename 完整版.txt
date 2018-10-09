@@ -1,0 +1,174 @@
+import os
+import numpy
+import json
+import sys
+import pickle
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.svm import SVR
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+path = '/home/mlb/res/stock/twse/json/'
+filename_list = os.listdir(path)
+filename_list.sort()
+
+start = filename_list.index('2017-06-01' + '.json')
+end = filename_list.index('2017-09-30' + '.json')
+
+content = {}
+
+for i in range(start, end + 1):#not include end+1
+    with open(path + filename_list[i], 'r') as f:
+        tmp = json.load(f)
+    f.close()
+    content[filename_list[i][:-5]] = tmp#[:-5]是印出20xx-xx-xx.json中的20xx-xx-xx，不印出.json
+
+test = {}
+for i in range(0, 5):    
+    with open('/home/mlb/res/stock/twse/json/'+filename_list[-1-i]) as f:
+        rawdata = json.load(f)
+    f.close()
+    test[filename_list[-1-i]] = rawdata
+Day_list = sorted(list(test.keys()))
+Answer = []
+Open = []
+Stock_feature = []    
+Stock_list = sorted(list(test[Day_list[-1]].keys()))
+new_Stock_list = []
+Stock_list.remove('id')
+#print(len(Stock_list))
+for Stock in Stock_list:
+    tmp = []
+    for i in range(0, 5):
+        if Stock not in test[Day_list[-1-i]].keys():
+            break
+        for attr in ['open', 'close', 'high', 'low', 'adj_close', 'volume']:
+            if test[Day_list[-1-i]][Stock][attr] == None:
+                break
+            if test[Day_list[-1-i]][Stock][attr] == 'NULL':
+                break
+            tmp.append(float(test[Day_list[-1-i]][Stock][attr]))    
+    if len(tmp) != 30:
+        continue
+    if test[Day_list[-1]][Stock]['close'] != 'NULL' and test[Day_list[-1]][Stock]['close'] != None:
+        new_Stock_list.append(Stock)
+        Ans = float(test[Day_list[-1-i]][Stock]['close'])
+        O = float(test[Day_list[-1-i]][Stock]['open'])
+        Stock_feature.append(tmp)
+        Answer.append(Ans)
+        Open.append(O)
+New_Stock_list = numpy.array(new_Stock_list)
+recent_days = numpy.array(Stock_feature)
+close_today = numpy.array(Answer)
+open_today = numpy.array(Open)
+#print(len(Answer))
+numpy.save('../output/recent_days', recent_days)
+numpy.save('../output/close_today', close_today)
+x_predicted = numpy.load('../output/recent_days.npy')
+y_today = numpy.load('../output/close_today.npy')
+
+stock_feature = []
+answer = []
+day_list = sorted(list(content.keys()))
+#print(day_list)
+for i in range(5, len(day_list)-1):#i自5開始
+    #print(day_list[i])
+    stock_list = sorted(list(content[day_list[i]].keys()))#stock_list陣列存的是公司的編號
+    stock_list.remove('id')
+    #print(stock_list)
+    for stock in stock_list:
+        #print(day_list[i+1])
+        if stock not in content[day_list[i+1]].keys():#stock_list裡的公司編號stock不在dictionary content裡的話，就重新for迴圈
+            continue
+        tmp = []
+        # print(stock)
+        for j in range(0, 5):#把所取第一天之後五天的資料建成30筆資料的陣列，依序從第六天、第五天...第二天排列。假如我取2017-10-06開始依序
+            #是2017-10-11、2017-10-12、2017-10-13、2017-10-16、2017-10-17、2017-10-18共7天(至少要取7天)，則30筆資料不包刮2017-10-06的
+            if stock not in content[day_list[i-j]].keys():
+                break
+            for attr in ['open', 'close', 'high', 'low', 'adj_close', 'volume']:
+                if content[day_list[i-j]][stock][attr] == None:
+                    break
+                if content[day_list[i-j]][stock][attr] == 'NULL':
+                    break
+                tmp.append(float(content[day_list[i-j]][stock][attr]))
+            #print(len(tmp))
+        if len(tmp) != 30:
+            continue
+        if content[day_list[i+1]][stock]['close'] != 'NULL' and content[day_list[i+1]][stock]['close'] != None:
+            #ans = 1 if float(content[day_list[i+1]][stock]['close']) - float(content[day_list[i]][stock]['close']) > 0 else 0
+            ans = float(content[day_list[i+1]][stock]['close'])
+            
+            answer.append(ans)#answer是第n+1天的收盤價
+            stock_feature.append(tmp)#stock_feature是第n天以前5天的所有資料        
+X = numpy.array(stock_feature)
+Y = numpy.array(answer)
+#numpy.save('../output/tr_X', X)
+#numpy.save('../output/tr_Y', Y)
+#numpy.save('te_X', X)
+#numpy.save('te_Y', Y)
+#stock_train_X = numpy.load('../output/tr_X.npy') 
+#stock_train_Y = numpy.load('../output/tr_Y.npy')
+#stock_test_X = numpy.load('te_X.npy') 
+#stock_test_Y = numpy.load('te_Y.npy')
+
+'''#RandomForestRegressor
+regr =  RandomForestRegressor(max_depth=3, random_state=0)
+regr.fit(stock_train_X, stock_train_Y)
+y_predict = regr.predict(x_predicted)
+# Save model
+f = open('model.pkl', "wb")
+pickle.dump(regr, f)
+# load model
+f = open('model.pkl', 'rb')
+regr2 = pickle.load(f)
+print('Test accuracy: {:.3f}'.format(regr2.score(stock_test_X, stock_test_Y)))
+'''
+'''
+#SVR
+scaler = StandardScaler()
+svr = SVR(C=5, gamma=0.04)
+clf = Pipeline([('scaler', scaler), ('svr', svr)])
+clf.fit(stock_train_X, stock_train_Y)
+y_predict = clf.predict(x_predicted)
+# Save model
+f = open('model.pkl', "wb")
+pickle.dump(clf, f)
+'''
+# load model
+f = open('model.pkl', 'rb')
+clf2 = pickle.load(f)
+y_predict = clf2.predict(x_predicted)
+#print('Test accuracy: {:.3f}'.format(clf2.score(stock_test_X, stock_test_Y)))
+#print('Test accuracy: {:.3f}'.format(clf2.score(x_predicted, y_today)))
+obj = {}
+decision = []
+#Decision = {}
+for i in range(0, len(New_Stock_list)):
+    if float((y_predict[i]-y_today[i])/y_today[i]) >= 0.07:
+        obj['code'] = New_Stock_list[i]
+        obj['type'] = 'buy'
+        obj['weight'] = 1
+        obj['life'] = 5
+        n = open_today[i]
+        obj['open_price'] = n
+        obj['close_high_price'] = n+float(n*0.03)
+        obj['close_low_price'] = n-float(n*0.1)
+        decision.append(obj)
+        obj = {}
+    elif float((y_predict[i]-y_today[i])/y_today[i]) <= -0.1:
+        obj['code'] = New_Stock_list[i]
+        obj['type'] = 'short'
+        obj['weight'] = 1
+        obj['life'] = 3
+        n = open_today[i]
+        obj['open_price'] = n
+        obj['close_high_price'] = n+float(n*0.03)
+        obj['close_low_price'] = n-float(n*0.1)
+        decision.append(obj)
+        obj = {}
+#Decision[sys.argv[1]] = decision
+#print(decision)
+with open('../commit/'+sys.argv[1]+'_'+sys.argv[2]+'.json','w') as f:
+    json.dump(decision, f, indent=4)
+    #f.write(out)
+#print('../commit/'+Day_list[-1][:-5]+'_'+Day_list[-1][:-5]+'.json','w')
